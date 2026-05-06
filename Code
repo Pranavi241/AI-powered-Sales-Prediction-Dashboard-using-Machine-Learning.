@@ -1,0 +1,118 @@
+import streamlit as st
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
+st.set_page_config(page_title="Smart Sales Dashboard", layout="wide")
+
+st.title("📊 Smart Sales Prediction & Business Optimization Dashboard")
+
+# Upload dataset
+uploaded_file = st.file_uploader("📂 Upload your dataset (CSV)", type=["csv"])
+
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+
+    st.subheader("📄 Dataset Preview")
+    st.dataframe(df.head())
+
+    # 🔍 Dynamic Filters
+    st.sidebar.header("🔍 Filters")
+
+    categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+
+    for col in categorical_cols:
+        unique_vals = df[col].dropna().unique()
+
+        if len(unique_vals) <= 30:
+            selected_val = st.sidebar.selectbox(
+                f"Select {col}",
+                ["All"] + list(unique_vals)
+            )
+
+            if selected_val != "All":
+                df = df[df[col] == selected_val]
+
+    # ⚙️ Column Selection
+    st.subheader("⚙️ Select Columns")
+
+    # Date column (any column)
+    date_col = st.selectbox("Select Date Column", df.columns)
+
+    # ✅ FIX: Only numeric columns for sales
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+
+    if len(numeric_cols) == 0:
+        st.error("⚠️ No numeric columns found in dataset!")
+        st.stop()
+
+    target_col = st.selectbox("Select Target Column (Sales)", numeric_cols)
+
+    # Convert Date
+    try:
+        df[date_col] = pd.to_datetime(df[date_col])
+        df['Day'] = df[date_col].dt.day
+        df['Month'] = df[date_col].dt.month
+    except:
+        st.error("⚠️ Please select a valid date column")
+        st.stop()
+
+    # 💰 KPI
+    st.subheader("💰 Total Sales")
+    total_sales = df[target_col].sum()
+    st.metric("Total Sales", f"₹ {total_sales:,.2f}")
+
+    # 📈 Sales Trend
+    st.subheader("📈 Sales Trend")
+    df = df.sort_values(date_col)
+    st.line_chart(df.set_index(date_col)[target_col])
+
+    # 📊 Category-wise Chart
+    if len(categorical_cols) > 0:
+        st.subheader("📊 Category-wise Sales")
+
+        selected_cat = st.selectbox("Select Category for Analysis", categorical_cols)
+        grouped = df.groupby(selected_cat)[target_col].sum()
+
+        st.bar_chart(grouped)
+
+    # 🔮 Prediction
+    st.subheader("🔮 Future Sales Prediction")
+
+    X = df[['Day', 'Month']]
+    y = df[target_col]
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    future = pd.DataFrame({
+        'Day': [1, 2, 3, 4, 5],
+        'Month': [df['Month'].iloc[-1]] * 5
+    })
+
+    predictions = model.predict(future)
+
+    for i, p in enumerate(predictions):
+        st.write(f"Day {i+1}: ₹ {round(p, 2)}")
+
+    # 💡 Insights
+    st.subheader("💡 Business Insights")
+
+    avg_sales = df[target_col].mean()
+    st.write(f"Average Sales: ₹ {round(avg_sales, 2)}")
+
+    if df[target_col].iloc[-1] < avg_sales:
+        st.warning("⚠️ Sales are below average recently!")
+    else:
+        st.success("✅ Sales are performing well!")
+
+    # 🏆 Top Category
+    if len(categorical_cols) > 0:
+        top_category = df.groupby(selected_cat)[target_col].sum().idxmax()
+        st.success(f"🏆 Top Performing Category: {top_category}")
+
+    # ⚠️ Alert
+    if df[target_col].iloc[-1] < avg_sales:
+        st.error("⚠️ Sales dropping trend detected!")
+
+else:
+    st.info("👆 Upload a CSV file to start")
